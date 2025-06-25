@@ -1,10 +1,10 @@
 #' Reduksi dimensi dataset menggunakan berbagai metode
 #'
-#' Fungsi ini melakukan reduksi dimensi pada dataset menggunakan metode seperti PCA,
-#' ICA, t-SNE, UMAP, atau LDA dan menghasilkan berbagai plot untuk memudahkan analisis statistik.
+#' Fungsi ini melakukan reduksi dimensi pada dataset menggunakan metode seperti PCA
+#' atau LDA dan menghasilkan berbagai plot untuk memudahkan analisis statistik.
 #'
 #' @param data Data frame atau matriks yang berisi data untuk direduksi.
-#' @param metode Metode reduksi dimensi: "PCA", "ICA", "t-SNE", "UMAP", atau "LDA".
+#' @param metode Metode reduksi dimensi: "PCA" atau "LDA".
 #' @param n_komponen Jumlah dimensi yang akan direduksi (default 2).
 #' @param target Untuk LDA saja, variabel faktor yang berisi label kelas.
 #' @param scale Logis, apakah data akan discale sebelum reduksi (default TRUE).
@@ -34,17 +34,14 @@
 #'                     scale_color_viridis_d unit arrow geom_hline geom_vline
 #' @importFrom dplyr as_tibble
 #' @importFrom stats prcomp predict as.formula
-#' @importFrom fastICA fastICA
-#' @importFrom Rtsne Rtsne
 #' @importFrom MASS lda
-#' @importFrom umap umap
 #' @importFrom plotly ggplotly
 #' @importFrom utils head tail
 #'
 #' @export
 
 reduksi_dimensi <- function(data,
-                            metode = c("PCA", "ICA", "t-SNE", "UMAP", "LDA"),
+                            metode = c("PCA", "LDA"),
                             n_komponen = 2,
                             target = NULL,
                             scale = TRUE,
@@ -72,9 +69,6 @@ reduksi_dimensi <- function(data,
   # Daftar package yang diperlukan
   package_diperlukan <- list(
     "PCA" = c("ggplot2", "dplyr"),
-    "ICA" = c("ggplot2", "dplyr", "fastICA"),
-    "t-SNE" = c("ggplot2", "dplyr", "Rtsne"),
-    "UMAP" = c("ggplot2", "dplyr", "umap"),
     "LDA" = c("ggplot2", "dplyr", "MASS")
   )
 
@@ -130,15 +124,6 @@ reduksi_dimensi <- function(data,
   if (metode == "PCA") {
     hasil <- proses_pca(matriks_data, n_komponen, center, scale, hasil)
 
-  } else if (metode == "ICA") {
-    hasil <- proses_ica(matriks_data, n_komponen, center, scale, hasil, ...)
-
-  } else if (metode == "t-SNE") {
-    hasil <- proses_tsne(matriks_data, n_komponen, center, scale, hasil, ...)
-
-  } else if (metode == "UMAP") {
-    hasil <- proses_umap(matriks_data, n_komponen, center, scale, hasil, ...)
-
   } else if (metode == "LDA") {
     hasil <- proses_lda(matriks_data, target, n_komponen, hasil, ...)
   }
@@ -179,86 +164,6 @@ proses_pca <- function(matriks_data, n_komponen, center, scale, hasil) {
   hasil$ringkasan$varians_kumulatif <- varians_kumulatif[1:n_komponen]
   hasil$ringkasan$total_varians <- sum(varians_dijelaskan[1:n_komponen])
   hasil$ringkasan$loading <- model$rotation[, 1:n_komponen]
-
-  return(hasil)
-}
-
-# Fungsi untuk ICA
-proses_ica <- function(matriks_data, n_komponen, center, scale, hasil, ...) {
-  if (scale || center) {
-    matriks_data <- scale(matriks_data, center = center, scale = scale)
-  }
-
-  dots <- list(...)
-  model <- do.call(fastICA::fastICA,
-                   c(list(X = matriks_data, n.comp = n_komponen), dots))
-
-  data_reduksi <- as.data.frame(model$S)
-  colnames(data_reduksi) <- paste0("IC", 1:ncol(data_reduksi))
-
-  hasil$model <- model
-  hasil$data_reduksi <- data_reduksi
-  hasil$ringkasan$matriks_mixing <- model$A
-  hasil$ringkasan$matriks_unmixing <- model$W
-
-  return(hasil)
-}
-
-# Fungsi untuk t-SNE
-proses_tsne <- function(matriks_data, n_komponen, center, scale, hasil, ...) {
-  dots <- list(...)
-
-  # Set perplexity defaultnya
-  if (is.null(dots$perplexity)) {
-    perplexity <- min(30, floor(nrow(matriks_data) / 5))
-  } else {
-    perplexity <- dots$perplexity
-    dots$perplexity <- NULL
-  }
-
-  if (scale || center) {
-    matriks_data <- scale(matriks_data, center = center, scale = scale)
-  }
-
-  if (any(is.na(matriks_data))) {
-    stop("t-SNE tidak dapat menangani data dengan nilai yang hilang. Silakan lakukan penanganan terlebih dahulu.")
-  }
-
-  model <- do.call(Rtsne::Rtsne,
-                   c(list(X = matriks_data, dims = n_komponen,
-                          perplexity = perplexity, check_duplicates = FALSE,
-                          pca = TRUE), dots))
-
-  data_reduksi <- as.data.frame(model$Y)
-  colnames(data_reduksi) <- paste0("tSNE", 1:ncol(data_reduksi))
-
-  hasil$model <- model
-  hasil$data_reduksi <- data_reduksi
-  hasil$ringkasan$kl_divergence <- tail(model$itercosts, 1)
-
-  return(hasil)
-}
-
-# Fungsi untuk UMAP
-proses_umap <- function(matriks_data, n_komponen, center, scale, hasil, ...) {
-  if (scale || center) {
-    matriks_data <- scale(matriks_data, center = center, scale = scale)
-  }
-
-  if (any(is.na(matriks_data))) {
-    stop("UMAP tidak dapat menangani missing values. Silakan imputasi atau hapus terlebih dahulu.")
-  }
-
-  dots <- list(...)
-  model <- do.call(umap::umap,
-                   c(list(d = matriks_data, n_components = n_komponen), dots))
-
-  data_reduksi <- as.data.frame(model$layout)
-  colnames(data_reduksi) <- paste0("UMAP", 1:ncol(data_reduksi))
-
-  hasil$model <- model
-  hasil$data_reduksi <- data_reduksi
-  hasil$ringkasan$konfigurasi <- model$config
 
   return(hasil)
 }
@@ -330,15 +235,6 @@ buat_semua_plots <- function(data_reduksi, model, ringkasan, metode,
     plots <- buat_plots_lda(data_reduksi, model, ringkasan, variabel_warna,
                             target, judul, return_plotly)
 
-  } else if (metode == "t-SNE") {
-    plots <- buat_plots_tsne(data_reduksi, model, variabel_warna, judul, return_plotly)
-
-  } else if (metode == "UMAP") {
-    plots <- buat_plots_umap(data_reduksi, variabel_warna, judul, return_plotly)
-
-  } else if (metode == "ICA") {
-    plots <- buat_plots_ica(data_reduksi, model, ringkasan, variabel_warna,
-                            judul, return_plotly)
   }
 
   return(plots)
@@ -487,119 +383,6 @@ buat_plots_lda <- function(data_reduksi, model, ringkasan, variabel_warna,
   return(plots)
 }
 
-
-# Plot untuk t-SNE
-buat_plots_tsne <- function(data_reduksi, model, variabel_warna, judul, return_plotly) {
-  plots <- list()
-
-  if (ncol(data_reduksi) >= 3) {
-    col_names <- colnames(data_reduksi)
-    tsne1_col <- col_names[2]  # skip 'id'
-    tsne2_col <- col_names[3]
-
-    p_embedding <- buat_scatter_plot(data_reduksi, tsne1_col, tsne2_col,
-                                     "t-SNE Embedding", NULL, variabel_warna)
-    plots$embedding_plot <- p_embedding
-
-    # Plot untuk melihat konvergensi t-SNE berdasarkan itercosts jika ada
-    if (!is.null(model$itercosts)) {
-      iter_df <- data.frame(
-        Iterasi = seq_along(model$itercosts),
-        KL_Divergence = model$itercosts
-      )
-
-      p_itercost <- ggplot2::ggplot(iter_df, ggplot2::aes(x = Iterasi, y = KL_Divergence)) +
-        ggplot2::geom_line(color = "blue") +
-        ggplot2::geom_point(color = "darkblue", size = 1) +
-        ggplot2::ggtitle("Konvergensi t-SNE (KL Divergence per Iterasi)") +
-        ggplot2::xlab("Iterasi") +
-        ggplot2::ylab("KL Divergence") +
-        ggplot2::theme_minimal()
-
-      plots$itercost_plot <- p_itercost
-    }
-
-    # Konversi ke plotly jika diminta dan plotly tersedia
-    if (return_plotly && requireNamespace("plotly", quietly = TRUE)) {
-      plots$embedding_plot <- plotly::ggplotly(plots$embedding_plot)
-      if (!is.null(plots$itercost_plot)) {
-        plots$itercost_plot <- plotly::ggplotly(plots$itercost_plot)
-      }
-    }
-  }
-
-  return(plots)
-}
-
-# Plot untuk UMAP
-buat_plots_umap <- function(data_reduksi, variabel_warna, judul, return_plotly) {
-  plots <- list()
-
-  if (ncol(data_reduksi) >= 3) {
-    col_names <- colnames(data_reduksi)
-    umap1_col <- col_names[2]  # skip 'id'
-    umap2_col <- col_names[3]
-
-    p_embedding <- buat_scatter_plot(data_reduksi, umap1_col, umap2_col,
-                                     "UMAP Embedding", NULL, variabel_warna)
-    plots$embedding_plot <- p_embedding
-
-    # Konversi ke plotly jika diminta
-    if (return_plotly && requireNamespace("plotly", quietly = TRUE)) {
-      plots$embedding_plot <- plotly::ggplotly(plots$embedding_plot)
-    }
-  }
-
-  return(plots)
-}
-
-# Plot untuk ICA
-buat_plots_ica <- function(data_reduksi, model, ringkasan, variabel_warna,
-                           judul, return_plotly) {
-  plots <- list()
-
-  # Untuk membuat IC plot
-  if (ncol(data_reduksi) >= 3) {
-    col_names <- colnames(data_reduksi)
-    ic1_col <- col_names[2]  # skip 'id'
-    ic2_col <- col_names[3]
-
-    p_ic <- buat_scatter_plot(data_reduksi, ic1_col, ic2_col,
-                              "Independent Components", NULL, variabel_warna)
-    plots$ic_plot <- p_ic
-  }
-
-  # Untuk membuat mixing matrix heatmap
-  if (!is.null(ringkasan$matriks_mixing)) {
-    mixing_matrix <- ringkasan$matriks_mixing
-    mixing_df <- expand.grid(Component = 1:ncol(mixing_matrix),
-                             Variable = 1:nrow(mixing_matrix))
-    mixing_df$Value <- as.vector(mixing_matrix)
-
-    p_mixing <- ggplot2::ggplot(mixing_df, ggplot2::aes(x = Component, y = Variable, fill = Value)) +
-      ggplot2::geom_tile(color = "white") +
-      ggplot2::scale_fill_gradient2(low = "blue", mid = "white", high = "red",
-                                    midpoint = 0, name = "Weight") +
-      ggplot2::labs(title = "Mixing Matrix Heatmap",
-                    x = "Independent Component",
-                    y = "Original Variable") +
-      ggplot2::theme_minimal() +
-      ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5, size = 12)) +
-      ggplot2::scale_x_continuous(breaks = 1:ncol(mixing_matrix)) +
-      ggplot2::scale_y_continuous(breaks = 1:nrow(mixing_matrix))
-
-    plots$mixing_matrix <- p_mixing
-  }
-
-  # Konversi ke plotly jika diminta
-  if (return_plotly && requireNamespace("plotly", quietly = TRUE)) {
-    if (!is.null(plots$ic_plot)) plots$ic_plot <- plotly::ggplotly(plots$ic_plot)
-    if (!is.null(plots$mixing_matrix)) plots$mixing_matrix <- plotly::ggplotly(plots$mixing_matrix)
-  }
-
-  return(plots)
-}
-
 # Fungsi untuk membuat scatter plot umum
 buat_scatter_plot <- function(data_plot, x_col, y_col, judul, explained_var = NULL, variabel_warna) {
 
@@ -666,29 +449,6 @@ ringkasan_reduksi <- function(hasil_reduksi) {
     cat(sprintf("\nData hasil reduksi (menampilkan 5 dari %d baris):\n", nrow(hasil_reduksi$data_reduksi)))
     print(head(as.data.frame(hasil_reduksi$data_reduksi[,-1]), 5))
 
-  } else if (metode == "t-SNE") {
-    cat("Perplexity yang digunakan:", hasil_reduksi$model$perplexity, "\n")
-    cat("\nNilai KL Divergence akhir:", round(hasil_reduksi$ringkasan$kl_divergence, 4), "\n")
-
-    cat(sprintf("\nData hasil reduksi (menampilkan 5 dari %d baris):\n", nrow(hasil_reduksi$data_reduksi)))
-    print(head(as.data.frame(hasil_reduksi$data_reduksi[,-1]), 5))
-
-  } else if (metode == "ICA") {
-    cat("Mixing matrix:\n")
-    print(hasil_reduksi$model$A)
-
-    cat("\nUnmixing matrix:\n")
-    print(hasil_reduksi$model$W)
-
-    cat("\nWhitening matrix:\n")
-    print(hasil_reduksi$model$K)
-
-    cat(sprintf("\nData hasil reduksi (menampilkan 5 dari %d baris):\n", nrow(hasil_reduksi$data_reduksi)))
-    print(head(as.data.frame(hasil_reduksi$data_reduksi[,-1]), 5))
-
-  } else if (metode == "UMAP") {
-    cat(sprintf("\nData hasil reduksi (menampilkan 5 dari %d baris):\n", nrow(hasil_reduksi$data_reduksi)))
-    print(head(as.data.frame(hasil_reduksi$data_reduksi[,-1]), 5))
   }
 
   if (length(hasil_reduksi$validasi$peringatan) > 0) {

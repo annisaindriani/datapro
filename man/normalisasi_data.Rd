@@ -6,7 +6,7 @@
 \usage{
 normalisasi_data(
   data,
-  metode = c("minmax", "z-score", "robust", "quantile"),
+  metode = c("minmax", "z-score", "robust"),
   hapus_na = TRUE,
   center = c("median", "mean"),
   scale = c("iqr", "sd", "mad"),
@@ -22,7 +22,6 @@ normalisasi_data(
 \item "minmax": Penskalaan Min-Max ke rentang 0 hingga 1 (default).
 \item "z-score": Standardisasi Z-score.
 \item "robust": Penskalaan robust menggunakan median dan iqr.
-\item "quantile": Normalisasi kuantil.
 }}
 
 \item{hapus_na}{Logis, apakah akan menghapus nilai yang hilang sebelum perhitungan (default TRUE).}
@@ -43,7 +42,7 @@ Jika invers_params = TRUE, mengembalikan list dengan komponen:
 }
 \description{
 Fungsi ini menyediakan beberapa metode untuk normalisasi atau penskalaan data numerik,
-termasuk Min-Max scaling, Z-score standardization, Robust scaling, dan Quantile normalization.
+termasuk Min-Max scaling, Z-score standardization, dan robust scaling.
 }
 \examples{
 # Membuat sampel data

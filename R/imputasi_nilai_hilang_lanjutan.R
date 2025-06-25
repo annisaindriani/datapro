@@ -91,309 +91,112 @@ imputasi_nilai_hilang_lanjutan <- function(data,
     return(invisible(data))
   }
 
+  # Fungsi untuk deteksi nilai hilang (NA, NULL, dan string kosong)
+  is_missing <- function(x) {
+    is.na(x) | is.null(x) | (is.character(x) & x == "")
+  }
+
+  # Fungsi untuk convert string kosong ke NA untuk kompatibilitas dengan library imputasi
+  convert_empty_to_na <- function(x) {
+    if (is.character(x)) {
+      x[x == ""] <- NA
+    }
+    return(x)
+  }
+
+  # Convert semua string kosong ke NA untuk kompatibilitas dengan library
+  data_converted <- data
+  for (i in seq_along(data_converted)) {
+    data_converted[[i]] <- convert_empty_to_na(data_converted[[i]])
+  }
+
+  # Cek apakah ada nilai yang hilang (termasuk string kosong yang sudah diconvert)
+  has_missing <- any(apply(data_converted, 2, function(col) any(is.na(col))))
+
   # Apabila tidak ada nilai yang hilang sama sekali
-  if (!any(is.na(data))) {
+  if (!has_missing) {
     cat("Tidak ditemukan baris atau kolom dengan nilai yang hilang dalam dataset. Tidak ada imputasi yang dilakukan.\n")
     return(invisible(data))
   }
 
+  # Untuk menyimpan data asli sebelum conversion
+  data_asli <- data
+
+  # Set seed untuk reproduktibilitas
   set.seed(seed)
 
-  # Untuk validasi parameter kolom
+  # Untuk validasi pada parameter kolom
   if (!is.null(kolom)) {
-    kolom_tidak_ada <- setdiff(kolom, names(data))
-    if (length(kolom_tidak_ada) > 0) {
-      stop("Kolom berikut tidak ditemukan dalam dataset: ",
-           paste(kolom_tidak_ada, collapse = ", "))
+    kolom_tidak_valid <- setdiff(kolom, names(data_converted))
+    if (length(kolom_tidak_valid) > 0) {
+      stop("Kolom berikut tidak ada dalam dataset: ",
+           paste(kolom_tidak_valid, collapse = ", "))
     }
-    kolom_untuk_diproses <- kolom
+    kolom_diproses <- kolom
   } else {
-    kolom_untuk_diproses <- names(data)
+    kolom_diproses <- names(data_converted)
   }
 
-  # Jika terdapat kolom yang semuanya berisi nilai yang hilang
-  kolom_semua_na <- kolom_untuk_diproses[sapply(data[kolom_untuk_diproses], function(x) all(is.na(x)))]
-  if (length(kolom_semua_na) > 0) {
+  # Untuk melakukan imputasi berdasarkan metode yang dipilih
+  tryCatch({
+    if (metode == "knn") {
+      if (verbose) cat("Melakukan imputasi menggunakan KNN...\n")
+      hasil_imputasi <- VIM::kNN(data_converted, k = k, trace = FALSE)
+
+      # Hapus kolom flag imputasi yang dihasilkan oleh VIM
+      hasil_imputasi <- hasil_imputasi[, !grepl("_imp$", names(hasil_imputasi))]
+
+    } else if (metode == "mice") {
+      if (verbose) cat("Melakukan imputasi menggunakan MICE...\n")
+      mice_result <- mice::mice(data_converted, m = m, maxit = maxit,
+                                method = method, printFlag = verbose, seed = seed)
+      hasil_imputasi <- mice::complete(mice_result)
+
+    } else if (metode == "rf") {
+      if (verbose) cat("Melakukan imputasi menggunakan Random Forest...\n")
+      rf_result <- missForest::missForest(data_converted, ntree = ntree,
+                                          verbose = verbose, parallelize = "no")
+      hasil_imputasi <- rf_result$ximp
+
+    } else if (metode == "hotdeck") {
+      if (verbose) cat("Melakukan imputasi menggunakan Hot Deck...\n")
+      hasil_imputasi <- VIM::hotdeck(data_converted, trace = FALSE)
+      hasil_imputasi <- hasil_imputasi[, !grepl("_imp$", names(hasil_imputasi))]
+    }
+
+    # Semisal hanya impute kolom tertentu
+    hasil_final <- data_converted
+    if (!is.null(kolom)) {
+      hasil_final[, kolom_diproses] <- hasil_imputasi[, kolom_diproses]
+    } else {
+      hasil_final <- hasil_imputasi
+    }
+
+    # Untuk melakukan pembulatan jika diperlukan
+    if (round) {
+      for (nama_kolom in names(hasil_final)) {
+        if (is.numeric(hasil_final[[nama_kolom]])) {
+          hasil_final[[nama_kolom]] <- round(hasil_final[[nama_kolom]], digit)
+        }
+      }
+    }
+
     if (verbose) {
-      cat("Kolom berikut memiliki semua nilai yang hilang dan tidak dapat diimputasi: ",
-          paste(kolom_semua_na, collapse = ", "), "\n")
-    }
-    kolom_untuk_diproses <- setdiff(kolom_untuk_diproses, kolom_semua_na)
-  }
-
-  # Jika tidak ada kolom yang bisa diimputasi
-  if (length(kolom_untuk_diproses) == 0) {
-    cat("Tidak ada kolom yang valid untuk diimputasi setelah penyaringan.\n")
-    return(invisible(data))
-  }
-
-  # Untuk menghitung modus
-  hitung_modus <- function(x) {
-    x_tanpa_na <- x[!is.na(x)]
-
-    if (length(x_tanpa_na) == 0) return(NA)
-
-    nilai_unik <- unique(x_tanpa_na)
-    nilai_unik[which.max(tabulate(match(x_tanpa_na, nilai_unik)))]
-  }
-
-  # Untuk menyimpan data asli
-  hasil <- data
-
-  info_imputasi <- list()
-
-  if (metode == "knn") {
-    if (requireNamespace("VIM", quietly = TRUE)) {
-      # Jika terdapat package eksternal yang dibutuhkan
-      if (verbose) {
-        cat("Melakukan imputasi KNN...\n")
-      }
-
-      # Untuk menyimpan nama kolom dan jumlah nilai yang hilang
-      jumlah_na_kolom <- sapply(data[kolom_untuk_diproses], function(x) sum(is.na(x)))
-
-      # Ambil kolom yang memiliki nilai yang hilang untuk proses imputasi
-      kolom_dengan_nilai_hilang <- names(jumlah_na_kolom[jumlah_na_kolom > 0])
-
-      if (length(kolom_dengan_nilai_hilang) > 0) {
-        data_imputasi <- VIM::kNN(data, variable = kolom_untuk_diproses, k = k)
-
-        # Hapus kolom flag imputasi yang dihasilkan oleh VIM
-        data_imputasi <- data_imputasi[, !grepl("_imp$", names(data_imputasi))]
-
-        hasil <- data_imputasi
-
-        for (kol in kolom_dengan_nilai_hilang) {
-          info_imputasi[[kol]] <- list(
-            jumlah = jumlah_na_kolom[kol],
-            persen = 100 * jumlah_na_kolom[kol] / nrow(data),
-            metode = "KNN",
-            k = k
-          )
-        }
-      }
-    } else {
-      stop("Package 'VIM' diperlukan untuk imputasi KNN. Silakan install dengan: install.packages('VIM')")
-    }
-  } else if (metode == "mice") {
-    if (requireNamespace("mice", quietly = TRUE)) {
-      if (verbose) {
-        cat("Melakukan imputasi MICE...\n")
-      }
-
-      # Untuk menyimpan nama kolom dan jumlah nilai yang hilang
-      jumlah_na_kolom <- sapply(data[kolom_untuk_diproses], function(x) sum(is.na(x)))
-      kolom_dengan_nilai_hilang <- names(jumlah_na_kolom[jumlah_na_kolom > 0])
-
-      if (length(kolom_dengan_nilai_hilang) > 0) {
-
-        # Konversi character ke factor untuk data kategorikal (unique < 50)
-        for (kol in names(data)) {
-          if (is.character(data[[kol]])) {
-            unique_vals <- length(unique(data[[kol]][!is.na(data[[kol]])]))
-            if (unique_vals < 50) {
-              data[[kol]] <- factor(data[[kol]])
-            } else {
-              cat(sprintf("Kolom '%s' tidak diubah menjadi faktor karena memiliki %d nilai unik (> %d).\nApabila imputasi gagal, ubah kolom ini menjadi faktor terlebih dahulu.\n",
-                          kol, unique_vals, max_unique))
-            }
-          }
-        }
-
-        tryCatch({
-          set.seed(seed)
-          data_mice <- mice::mice(data, m = m, maxit = maxit, printFlag = verbose)
-          hasil <- mice::complete(data_mice)
-
-          # Update info
-          for (kol in kolom_dengan_nilai_hilang) {
-            info_imputasi[[kol]] <- list(data,
-              jumlah = jumlah_na_kolom[kol],
-              persen = 100 * jumlah_na_kolom[kol] / nrow(data),
-              metode = "MICE",
-              iterasi = maxit
-            )
-          }
-
-          cat("\n")
-
-        }, error = function(e) {
-          warning("MICE gagal melakukan imputasi: ", e$message, ". Menggunakan nilai median untuk data numerik dan modus untuk data kategorik.\n")
-
-          # Fallback median untuk numerik dan modus untuk kategorik
-          hasil <- data
-          for (kol in kolom_dengan_nilai_hilang) {
-            na_idx <- is.na(hasil[[kol]])
-            if (any(na_idx)) {
-              if (is.numeric(hasil[[kol]])) {
-                hasil[[kol]][na_idx] <- median(hasil[[kol]], na.rm = TRUE)
-                metode_used <- "Median (Fallback)"
-              } else {
-                mode_val <- hitung_modus(hasil[[kol]])
-                hasil[[kol]][na_idx] <- mode_val
-                metode_used <- "Modus (Fallback)"
-              }
-            }
-          }
-
-          cat("\n")
-
-          for (kol in kolom_dengan_nilai_hilang) {
-            info_imputasi[[kol]] <- list(
-              jumlah = jumlah_na_kolom[kol],
-              persen = 100 * jumlah_na_kolom[kol] / nrow(data),
-              metode = metode_used,
-              iterasi = 0
-            )
-          }
-        })
-      }
-    } else {
-      stop("Package 'mice' diperlukan untuk imputasi MICE. Silakan install dengan: install.packages('mice')")
-    }
-  } else if (metode == "rf") {
-    if (requireNamespace("missForest", quietly = TRUE)) {
-      if (verbose) cat("Melakukan imputasi Random Forest...\n")
-
-      if (length(kolom_untuk_diproses) < 2) {
-        stop("Random Forest membutuhkan minimal 2 kolom.\n  Gunakan metode lain untuk single column.")
-      }
-
-      jumlah_na_kolom <- sapply(data[kolom_untuk_diproses], function(x) sum(is.na(x)))
-      kolom_dengan_nilai_hilang <- names(jumlah_na_kolom[jumlah_na_kolom > 0])
-
-      # Konversi character ke factor untuk data kategorikal
-      subset_data <- data[, kolom_untuk_diproses, drop = FALSE]
-      for (kol in names(subset_data)) {
-        if (is.character(subset_data[[kol]])) {
-          unique_vals <- length(unique(subset_data[[kol]][!is.na(subset_data[[kol]])]))
-          if (unique_vals < 50) {
-            subset_data[[kol]] <- factor(subset_data[[kol]])
-          } else {
-            cat(sprintf("Kolom '%s' tidak diubah menjadi faktor karena memiliki %d nilai unik (> %d).\nApabila imputasi gagal, ubah kolom ini menjadi faktor terlebih dahulu.\n",
-                            kol, unique_vals, max_unique))
-          }
-        }
-      }
-
-      tryCatch({
-        hasil_rf <- missForest::missForest(subset_data, ntree = ntree, verbose = verbose)
-        hasil[, kolom_untuk_diproses] <- hasil_rf$ximp
-
-        for (kol in kolom_dengan_nilai_hilang) {
-          info_imputasi[[kol]] <- list(
-            jumlah = jumlah_na_kolom[kol],
-            persen = round(100 * jumlah_na_kolom[kol] / nrow(data), 1),
-            metode = "Random Forest",
-            ntree = ntree
-          )
-        }
-
-        cat("\n")
-
-      }, error = function(e) {
-        warning("Random Forest gagal melakukan imputasi: ", e$message, ".\n  Menggunakan nilai median untuk data numerik dan modus untuk data kategorik.\n")
-
-         for (kol in kolom_dengan_nilai_hilang) {
-          na_idx <- is.na(hasil[[kol]])
-          if (any(na_idx)) {
-            if (is.numeric(hasil[[kol]])) {
-              fallback_val <- median(hasil[[kol]], na.rm = TRUE)
-              hasil[[kol]][na_idx] <- fallback_val
-              metode_used <- "Median (Fallback)"
-            } else {
-              non_na_vals <- hasil[[kol]][!na_idx]
-              if (length(non_na_vals) > 0) {
-                mode_val <- names(sort(table(non_na_vals), decreasing = TRUE))[1]
-                hasil[[kol]][na_idx] <- mode_val
-                metode_used <- "Modus (Fallback)"
-              }
-            }
-
-            info_imputasi[[kol]] <- list(
-              jumlah = jumlah_na_kolom[kol],
-              persen = round(100 * jumlah_na_kolom[kol] / nrow(data), 1),
-              metode = metode_used
-            )
-          }
-        }
-      })
-
-    } else {
-      stop("Package 'missForest' diperlukan untuk Random Forest.")
-    }
-  } else if (metode == "hotdeck") {
-    if (requireNamespace("VIM", quietly = TRUE)) {
-      if (verbose) {
-        cat("Melakukan imputasi Hot Deck...\n")
-      }
-
-      # Untuk menyimpan nama kolom dan jumlah nilai yang hilang
-      jumlah_na_kolom <- sapply(data[kolom_untuk_diproses], function(x) sum(is.na(x)))
-      kolom_dengan_nilai_hilang <- names(jumlah_na_kolom[jumlah_na_kolom > 0])
-
-      if (length(kolom_dengan_nilai_hilang) > 0) {
-        data_imputasi <- VIM::hotdeck(data, variable = kolom_untuk_diproses)
-
-        # Hapus kolom flag imputasi yang dihasilkan oleh VIM
-        data_imputasi <- data_imputasi[, !grepl("_imp$", names(data_imputasi))]
-
-        hasil <- data_imputasi
-
-        for (kol in kolom_dengan_nilai_hilang) {
-          info_imputasi[[kol]] <- list(
-            jumlah = jumlah_na_kolom[kol],
-            persen = 100 * jumlah_na_kolom[kol] / nrow(data),
-            metode = "Hot Deck"
-          )
-        }
-      }
-    } else {
-      stop("Package 'VIM' diperlukan untuk imputasi Hot Deck. Silakan install dengan: install.packages('VIM')")
-    }
-  }
-
-  # Jika pengguna ingin membulatkan hasil
-  if (round) {
-    for (kol in kolom_untuk_diproses) {
-      if (is.numeric(hasil[[kol]])) {
-        # Tandai nilai yang diimputasi
-        nilai_yang_hilang <- is.na(data[[kol]])
-
-        if (any(nilai_yang_hilang)) {
-          # Bulatkan nilai yang diimputasi
-          hasil[[kol]][nilai_yang_hilang] <- round(hasil[[kol]][nilai_yang_hilang], digit)
-
-          if (kol %in% names(info_imputasi)) {
-            info_imputasi[[kol]]$dibulatkan <- TRUE
-            info_imputasi[[kol]]$digit <- digit
-          }
+      for (nama_kolom in kolom_diproses) {
+        jumlah_missing_asli <- sum(is_missing(data_asli[[nama_kolom]]))
+        if (jumlah_missing_asli > 0) {
+          persen_missing <- 100 * jumlah_missing_asli / nrow(data_asli)
+          cat(sprintf("Kolom '%s': Melakukan imputasi %d nilai yang hilang (%.1f%%) menggunakan metode %s\n",
+                      nama_kolom, jumlah_missing_asli, persen_missing, metode))
         }
       }
     }
-  }
 
-  # Print summary jika verbose TRUE
-  if (verbose && length(info_imputasi) > 0) {
-    for (nama_kolom in names(info_imputasi)) {
-      info <- info_imputasi[[nama_kolom]]
+    return(invisible(hasil_final))
 
-      string_metode <- info$metode
-      if (!is.null(info$k)) string_metode <- paste0(string_metode, " (k=", info$k, ")")
-      if (!is.null(info$iterasi)) string_metode <- paste0(string_metode, " (iterasi=", info$iterasi, ")")
-      if (!is.null(info$ntree)) string_metode <- paste0(string_metode, " (ntree=", info$ntree, ")")
-
-      info_pembulatan <- if (!is.null(info$dibulatkan) && info$dibulatkan)
-        sprintf(" (dibulatkan ke %d angka desimal)", info$digit)
-      else
-        ""
-
-      cat(sprintf("Kolom '%s': Mengimputasi %d nilai yang hilang (%.1f%%) dengan %s%s\n",
-                  nama_kolom, info$jumlah, info$persen, string_metode, info_pembulatan))
-    }
-  } else if (verbose && length(info_imputasi) == 0) {
-    cat("Tidak ada nilai yang diimputasi. Tidak ada nilai yang hilang atau tidak dapat diimputasi dengan metode yang dipilih.\n")
-  }
-
-  return(invisible(hasil))
+  }, error = function(e) {
+    cat("Terjadi kesalahan saat melakukan imputasi:", e$message, "\n")
+    cat("Mengembalikan data asli tanpa imputasi.\n")
+    return(invisible(data_asli))
+  })
 }

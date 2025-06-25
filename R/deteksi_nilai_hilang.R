@@ -44,18 +44,26 @@ deteksi_nilai_hilang <- function(data, print_rows = TRUE, max_rows = 5) {
     return(invisible(NULL))
   }
 
+  # Fungsi untuk deteksi nilai hilang (NA, NULL, dan string kosong)
+  is_missing <- function(x) {
+    is.na(x) | is.null(x) | (is.character(x) & x == "")
+  }
+
+  # Cek apakah ada nilai yang hilang (termasuk string kosong)
+  has_missing <- any(apply(data, 2, function(col) any(is_missing(col))))
+
   # Apabila tidak ada nilai yang hilang
-  if (!any(is.na(data))) {
+  if (!has_missing) {
     cat("Tidak ditemukan baris atau kolom dengan nilai yang hilang dalam dataset.\n")
     return(invisible(NULL))
   }
 
   # Menghitung jumlah baris dengan nilai yang hilang
-  baris_dengan_na <- which(apply(data, 1, function(x) any(is.na(x))))
+  baris_dengan_na <- which(apply(data, 1, function(row) any(is_missing(row))))
   total_baris_dengan_na <- length(baris_dengan_na)
 
   # Menghitung jumlah baris dengan nilai yang hilang pada setiap kolom
-  na_berdasarkan_kolom <- sapply(data, function(x) sum(is.na(x)))
+  na_berdasarkan_kolom <- sapply(data, function(col) sum(is_missing(col)))
 
   # Mengambil baris unik yang mengandung nilai yang hilang
   data_baris_dengan_na <- data[baris_dengan_na, , drop = FALSE]

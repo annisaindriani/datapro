@@ -161,19 +161,6 @@ invers_normalisasi_data <- function(data, params, verbose = TRUE) {
         # invers Robust: x_original = x_scaled * scale + center
         data_df[[kol]] <- x * param$scale + param$center
 
-      } else if(param$metode == "quantile") {
-        # invers Quantile normalization
-        if (verbose) {
-          cat("Invers tidak tersedia untuk metode Quantile normalization.\nMengembalikan data asli yang belum dilakukan normalisasi.\n")
-        }
-
-        if(!is.null(param$data_asli)) {
-          data_df[[kol]] <- param$data_asli
-        } else {
-          cat("Data asli tidak tersimpan.\nMengembalikan data yang telah dinormalisasi.\n")
-          data_df[[kol]] <- x
-        }
-
       } else {
         if (verbose) {
           cat("Metode '", param$metode, "' tidak dikenal untuk invers. Kolom '", kol, "' tidak diubah.\n")

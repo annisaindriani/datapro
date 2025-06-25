@@ -1,7 +1,7 @@
 #' Normalisasi atau penskalaan nilai numerik dalam dataset menggunakan berbagai metode
 #'
 #' Fungsi ini menyediakan beberapa metode untuk normalisasi atau penskalaan data numerik,
-#' termasuk Min-Max scaling, Z-score standardization, Robust scaling, dan Quantile normalization.
+#' termasuk Min-Max scaling, Z-score standardization, dan robust scaling.
 #'
 #' @param data Sebuah data frame, tibble, atau vektor numerik yang akan dinormalisasikan atau diskalakan.
 #' @param metode String karakter yang menentukan metode normalisasi:
@@ -9,7 +9,6 @@
 #'     \item "minmax": Penskalaan Min-Max ke rentang 0 hingga 1 (default).
 #'     \item "z-score": Standardisasi Z-score.
 #'     \item "robust": Penskalaan robust menggunakan median dan iqr.
-#'     \item "quantile": Normalisasi kuantil.
 #'   }
 #' @param hapus_na Logis, apakah akan menghapus nilai yang hilang sebelum perhitungan (default TRUE).
 #' @param center Untuk penskalaan robust, nilai center yang tersedia adalah "median" dan "mean" (default "median").
@@ -58,7 +57,7 @@
 #' @export
 
 normalisasi_data <- function(data,
-                             metode = c("minmax", "z-score", "robust", "quantile"),
+                             metode = c("minmax", "z-score", "robust"),
                              hapus_na = TRUE,
                              center = c("median", "mean"),
                              scale = c("iqr", "sd", "mad"),
@@ -184,24 +183,6 @@ normalisasi_data <- function(data,
         params_invers$tipe_center <- center
         params_invers$tipe_scale <- scale
       }
-
-    } else if (metode == "quantile") {
-      # Untuk menyimpan data asli untuk inverse nanti karena one way
-      params_invers$data_asli <- data_input
-
-      # Menghitung rank dari nilai dan mengubahnya menjadi probabilitas
-      ranks <- rank(data_input, na.last = "keep", ties.method = "average")
-      n <- sum(!is.na(data_input))
-
-      # Rumus: (rank - 0.5) / n untuk mendapatkan probabilitas
-      probs <- (ranks - 0.5) / n
-
-      # Mengubah quantile probabilitas menjadi nilai pada distribusi normal standar
-      kuantil_normal <- stats::qnorm(probs)
-
-      data_normalisasi <- data_input
-      data_normalisasi[!is.na(data_input)] <- kuantil_normal[!is.na(data_input)]
-      params_invers$urutan_asli <- order(ranks)
 
     }
 
@@ -393,22 +374,6 @@ normalisasi_data <- function(data,
         params_list[[kol]] <- list(metode = metode, center = nilai_center, scale = nilai_scale,
                                    tipe_center = center, tipe_scale = scale)
 
-      } else if (metode == "quantile") {
-        # Untuk menyimpan data asli untuk inverse nanti karena one way
-        params_invers$data_asli <- x
-
-        # Menghitung rank dari nilai dan mengubahnya menjadi probabilitas
-        ranks <- rank(x, na.last = "keep", ties.method = "average")
-        n <- sum(!is.na(x))
-
-        # Rumus: (rank - 0.5) / n untuk mendapatkan probabilitas
-        probs <- (ranks - 0.5) / n
-
-        # Mengubah quantile probabilitas menjadi nilai pada distribusi normal standar
-        kuantil_normal <- stats::qnorm(probs)
-
-        data[[kol]][!is.na(x)] <- kuantil_normal[!is.na(x)]
-        params_list[[kol]] <- list(metode = metode, urutan_asli = order(ranks))
       }
     }
 

@@ -61,11 +61,11 @@
 #' @export
 
 cek_frekuensi_kategori <- function(data,
-                            kolom = NULL,
-                            max_display = 10,
-                            sort_by = c("desc", "asc", "none"),
-                            include_missing = TRUE,
-                            verbose = TRUE) {
+                                   kolom = NULL,
+                                   max_display = 10,
+                                   sort_by = c("desc", "asc", "none"),
+                                   include_missing = TRUE,
+                                   verbose = TRUE) {
 
   # Untuk melihat apakah inputnya sudah berupa data frame atau tibble
   if (!is.data.frame(data)) {
@@ -79,6 +79,11 @@ cek_frekuensi_kategori <- function(data,
   if (nrow(data) == 0) {
     cat("Dataset kosong. Tidak ada konversi yang dilakukan.\n")
     return(invisible(NULL))
+  }
+
+  # Fungsi untuk deteksi nilai hilang (NA, NULL, dan string kosong)
+  is_missing <- function(x) {
+    is.na(x) | is.null(x) | (is.character(x) & x == "")
   }
 
   # Untuk mengidentifikasi kolom kategorikal
@@ -121,11 +126,21 @@ cek_frekuensi_kategori <- function(data,
   for (col_name in kolom) {
     col_data <- data[[col_name]]
 
-    # Untuk menghitung frekuensi
+    # Convert missing values untuk perhitungan yang konsisten
     if (include_missing) {
-      freq_table <- table(col_data, useNA = "ifany")
+      # Convert string kosong ke NA untuk perhitungan tabel frekuensi
+      col_data_processed <- ifelse(is_missing(col_data), NA, col_data)
+      freq_table <- table(col_data_processed, useNA = "ifany")
     } else {
-      freq_table <- table(col_data, useNA = "no")
+      # Exclude semua jenis missing value
+      col_data_processed <- col_data[!is_missing(col_data)]
+      if (length(col_data_processed) == 0) {
+        if (verbose) {
+          cat("Kolom '", col_name, "': Semua nilai adalah missing value\n", sep = "")
+        }
+        next
+      }
+      freq_table <- table(col_data_processed, useNA = "no")
     }
 
     # Apabila tidak ada data dalam kolom tersebut
@@ -141,6 +156,17 @@ cek_frekuensi_kategori <- function(data,
       Count = as.numeric(freq_table),
       stringsAsFactors = FALSE
     )
+
+    # Filter out kategori dengan count 0
+    freq_df <- freq_df[freq_df$Count > 0, ]
+
+    # Apabila tidak ada data setelah filtering
+    if (nrow(freq_df) == 0) {
+      if (verbose) {
+        cat("Kolom '", col_name, "': Tidak ada data untuk dianalisis setelah filtering\n", sep = "")
+      }
+      next
+    }
 
     # Untuk menghitung persentase
     freq_df$Persentase <- round(freq_df$Count / sum(freq_df$Count) * 100, 2)

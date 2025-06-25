@@ -100,12 +100,23 @@ konversi_data <- function(data,
     data_kolom <- hasil[[col]]
     tipe_asli <- class(data_kolom)[1]
 
+    # Semisal ada string kosong biar gak bermasalah di factor
+    if (is.character(data_kolom)) {
+      data_kolom[data_kolom == ""] <- NA
+    } else if (is.factor(data_kolom)) {
+      if ("" %in% levels(data_kolom)) {
+        data_kolom <- as.character(data_kolom)
+        data_kolom[data_kolom == ""] <- NA
+        data_kolom <- as.factor(data_kolom)
+      }
+    }
+
     tryCatch({
       if (jenis_target == "character") {
         hasil[[col]] <- as.character(data_kolom)
 
       } else if (jenis_target == "factor") {
-        hasil[[col]] <- as.factor(data_kolom)
+        hasil[[col]] <- droplevels(as.factor(data_kolom))
 
       } else if (jenis_target == "numeric") {
         # Untuk memberikan warning apabila ada yang menjadi NA ketika konversi ke numerik

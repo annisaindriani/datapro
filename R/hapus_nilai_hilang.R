@@ -73,8 +73,16 @@ hapus_nilai_hilang <- function(data, opsi = c("baris", "kolom", "keduanya", "kol
     return(invisible(data))
   }
 
+  # Fungsi untuk deteksi nilai hilang (NA, NULL, dan string kosong)
+  is_missing <- function(x) {
+    is.na(x) | is.null(x) | (is.character(x) & x == "")
+  }
+
+  # Cek apakah ada nilai yang hilang (termasuk string kosong)
+  has_missing <- any(apply(data, 2, function(col) any(is_missing(col))))
+
   # Apabila tidak ada nilai yang hilang
-  if (!any(is.na(data))) {
+  if (!has_missing) {
     cat("Tidak ada baris atau kolom dengan nilai yang hilang yang ditemukan dalam dataset. Tidak ada baris atau kolom yang dihapus.\n")
     return(invisible(data))
   }
@@ -88,7 +96,7 @@ hapus_nilai_hilang <- function(data, opsi = c("baris", "kolom", "keduanya", "kol
 
   if (opsi == "baris") {
     # Untuk identifikasi baris dengan nilai yang hilang
-    baris_dengan_na <- which(apply(hasil, 1, function(x) any(is.na(x))))
+    baris_dengan_na <- which(apply(hasil, 1, function(row) any(is_missing(row))))
 
     # Hapus semua baris dengan nilai yang hilang
     if (length(baris_dengan_na) > 0) {
@@ -107,7 +115,7 @@ hapus_nilai_hilang <- function(data, opsi = c("baris", "kolom", "keduanya", "kol
     }
   } else if (opsi == "kolom") {
     # Untuk identifikasi kolom dengan nilai yang hilang
-    kolom_dengan_na <- which(apply(hasil, 2, function(x) any(is.na(x))))
+    kolom_dengan_na <- which(apply(hasil, 2, function(col) any(is_missing(col))))
 
     # Hapus semua kolom dengan nilai yang hilang
     if (length(kolom_dengan_na) > 0) {
@@ -128,10 +136,10 @@ hapus_nilai_hilang <- function(data, opsi = c("baris", "kolom", "keduanya", "kol
     }
   } else if (opsi == "keduanya") {
     # Untuk identifikasi kolom dengan nilai yang hilang
-    kolom_dengan_na <- which(apply(data, 2, function(x) any(is.na(x))))
+    kolom_dengan_na <- which(apply(data, 2, function(col) any(is_missing(col))))
 
     # Untuk identifikasi baris dengan nilai yang hilang
-    baris_dengan_na <- which(apply(data, 1, function(x) any(is.na(x))))
+    baris_dengan_na <- which(apply(data, 1, function(row) any(is_missing(row))))
 
     # Hapus semua kolom dengan nilai yang hilang
     if (length(kolom_dengan_na) > 0) {
@@ -170,7 +178,7 @@ hapus_nilai_hilang <- function(data, opsi = c("baris", "kolom", "keduanya", "kol
     }
 
     # Untuk melihat apakah kolom yang dipilih mengandung nilai yang hilang
-    kolom_dengan_na <- sapply(data[kolom_terpilih], function(x) any(is.na(x)))
+    kolom_dengan_na <- sapply(data[kolom_terpilih], function(col) any(is_missing(col)))
     kolom_tanpa_na <- names(kolom_dengan_na)[!kolom_dengan_na]
     kolom_ada_na <- names(kolom_dengan_na)[kolom_dengan_na]
 

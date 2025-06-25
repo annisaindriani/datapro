@@ -77,8 +77,16 @@ imputasi_nilai_hilang <- function(data, metode = c("mean", "median", "modus"),
     return(invisible(data))
   }
 
+  # Fungsi untuk deteksi nilai hilang (NA, NULL, dan string kosong)
+  is_missing <- function(x) {
+    is.na(x) | is.null(x) | (is.character(x) & x == "")
+  }
+
+  # Cek apakah ada nilai yang hilang (termasuk string kosong)
+  has_missing <- any(apply(data, 2, function(col) any(is_missing(col))))
+
   # Apabila tidak ada nilai yang hilang sama sekali
-  if (!any(is.na(data))) {
+  if (!has_missing) {
     cat("Tidak ditemukan baris atau kolom dengan nilai yang hilang dalam dataset. Tidak ada imputasi yang dilakukan.")
     return(invisible(data))
   }
@@ -100,7 +108,7 @@ imputasi_nilai_hilang <- function(data, metode = c("mean", "median", "modus"),
 
   # Untuk menghitung modus
   hitung_modus <- function(x) {
-    x_tanpa_na <- x[!is.na(x)]
+    x_tanpa_na <- x[!is_missing(x)]
 
     if (length(x_tanpa_na) == 0) {
       return(NA)  # Return NA jika semua value bernilai NA
@@ -120,7 +128,7 @@ imputasi_nilai_hilang <- function(data, metode = c("mean", "median", "modus"),
     kolom_data <- hasil[[nama_kolom]]
 
     # Skip jika kolom tidak memiliki nilai yang hilang
-    if (!any(is.na(kolom_data))) {
+    if (!any(is_missing(kolom_data))) {
       next
     }
 
@@ -133,14 +141,17 @@ imputasi_nilai_hilang <- function(data, metode = c("mean", "median", "modus"),
     }
 
     # Untuk menghitung jumlah baris dengan nilai yang hilang
-    jumlah_na <- sum(is.na(kolom_data))
+    jumlah_na <- sum(is_missing(kolom_data))
 
     # Untuk memproses kolom numerik
     if (is.numeric(kolom_data)) {
+      # Hitung dengan nilai non-missing
+      nilai_bersih <- kolom_data[!is_missing(kolom_data)]
+
       if (metode == "mean") {
-        nilai_imputasi <- mean(kolom_data, na.rm = TRUE)
+        nilai_imputasi <- mean(nilai_bersih, na.rm = TRUE)
       } else if (metode == "median") {
-        nilai_imputasi <- stats::median(kolom_data, na.rm = TRUE)
+        nilai_imputasi <- stats::median(nilai_bersih, na.rm = TRUE)
       } else if (metode == "modus") {
         nilai_imputasi <- hitung_modus(kolom_data)
       }
@@ -174,7 +185,7 @@ imputasi_nilai_hilang <- function(data, metode = c("mean", "median", "modus"),
     }
 
     # Untuk melakukan imputasi pada baris dengan nilai yang hilang
-    hasil[[nama_kolom]][is.na(kolom_data)] <- nilai_imputasi
+    hasil[[nama_kolom]][is_missing(kolom_data)] <- nilai_imputasi
 
     # Untuk menyimpan informasi yang akan ditampilkan
     info_imputasi[[nama_kolom]] <- list(
