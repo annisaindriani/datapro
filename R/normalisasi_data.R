@@ -414,6 +414,3 @@ normalisasi_data <- function(data,
 
   }
 }
-
-#' # Normalisasi Robust dengan mengembalikan parameter
-hasil <- normalisasi_data(data, metode = "robust", invers_params = TRUE)
