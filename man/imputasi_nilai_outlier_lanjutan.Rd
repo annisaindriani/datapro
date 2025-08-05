@@ -21,7 +21,7 @@ imputasi_nilai_outlier_lanjutan(
 )
 }
 \arguments{
-\item{data}{Vektor numerik atau dataframe.}
+\item{data}{Sebuah data frame.}
 
 \item{kolom}{Jika data adalah dataframe, nama kolom yang akan diproses.}
 
@@ -59,11 +59,10 @@ imputasi_nilai_outlier_lanjutan(
 \item{verbose}{Logikal, apakah akan menPrint informasi tentang nilai terimputasi (default TRUE).}
 }
 \value{
-Jika input adalah vektor, mengembalikan vektor dengan nilai terimputasi.
 Jika input adalah dataframe, mengembalikan dataframe dengan nilai terimputasi.
 }
 \description{
-Fungsi ini mengganti nilai outlier dalam vektor numerik atau kolom data frame
+Fungsi ini mengganti nilai outlier dalam kolom data frame
 dengan nilai imputasi menggunakan metode lanjutan seperti Winsorisasi,
 Random Forest, K-Nearest Neighbors, atau IRMI.
 }

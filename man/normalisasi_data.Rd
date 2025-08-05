@@ -8,8 +8,6 @@ normalisasi_data(
   data,
   metode = c("minmax", "z-score", "robust"),
   hapus_na = TRUE,
-  center = c("median", "mean"),
-  scale = c("iqr", "sd", "mad"),
   kolom = NULL,
   invers_params = FALSE
 )
@@ -25,10 +23,6 @@ normalisasi_data(
 }}
 
 \item{hapus_na}{Logis, apakah akan menghapus nilai yang hilang sebelum perhitungan (default TRUE).}
-
-\item{center}{Untuk penskalaan robust, nilai center yang tersedia adalah "median" dan "mean" (default "median").}
-
-\item{scale}{Untuk penskalaan robust, nilai scale yang tersedia adalah "iqr", "mad", dan "sd" (default "iqr").}
 
 \item{kolom}{Vektor karakter dari nama kolom yang akan dinormalisasi. Jika NULL (default), normalisasi semua kolom numerik.}
 
@@ -57,9 +51,6 @@ normalisasi_data(data)
 
 # Normalisasi metode Z-score hanya ke kolom 'x'
 normalisasi_data(data, metode = "z-score", kolom = "x")
-
-# Normalisasi Robust dengan opsi center dan scale yang berbeda
-normalisasi_data(data, metode = "robust", center = "mean", scale = "sd")
 
 # Normalisasi Robust dengan mengembalikan parameter
 hasil <- normalisasi_data(data, metode = "robust", invers_params = TRUE)
