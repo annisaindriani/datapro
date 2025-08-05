@@ -1,10 +1,10 @@
 #' Imputasi nilai outlier dalam dataset menggunakan metode lanjutan
 #'
-#' Fungsi ini mengganti nilai outlier dalam vektor numerik atau kolom data frame
+#' Fungsi ini mengganti nilai outlier dalam kolom data frame
 #' dengan nilai imputasi menggunakan metode lanjutan seperti Winsorisasi,
 #' Random Forest, K-Nearest Neighbors, atau IRMI.
 #'
-#' @param data Vektor numerik atau dataframe.
+#' @param data Sebuah data frame.
 #' @param kolom Jika data adalah dataframe, nama kolom yang akan diproses.
 #' @param metode Metode yang digunakan untuk deteksi nilai outlier. Pilihan:
 #'    \itemize{
@@ -29,8 +29,7 @@
 #' @param seed Integer, seed acak untuk reprodusibilitas (default 123).
 #' @param verbose Logikal, apakah akan menPrint informasi tentang nilai terimputasi (default TRUE).
 #'
-#' @return Jika input adalah vektor, mengembalikan vektor dengan nilai terimputasi.
-#'         Jika input adalah dataframe, mengembalikan dataframe dengan nilai terimputasi.
+#' @return Jika input adalah dataframe, mengembalikan dataframe dengan nilai terimputasi.
 #'
 #' @examples
 #' # Membuat sampel data
@@ -53,9 +52,8 @@
 #' \code{\link{deteksi_nilai_outlier}} untuk fungsi identifikasi nilai outlier dalam dataset.
 #'
 #' @importFrom stats predict median quantile sd
-#' @importFrom FNN knn.reg
-#' @importFrom randomForest randomForest
-#' @importFrom VIM irmi
+#' @importFrom missForest missForest
+#' @importFrom VIM irmi KNN
 #' @importFrom moments skewness
 #'
 #' @export
@@ -117,24 +115,15 @@ imputasi_nilai_outlier_lanjutan <- function(data, kolom = NULL,
 
     # Untuk menyimpan data asli sebelum dilakukan imputasi
     hasil <- data
-    x <- seq_along(data[[kolom]])
     y <- data[[kolom]]
 
     # Untuk menyimpan nilai outlier
     nilai_outlier <- y[indeks_outlier]
 
-    # Untuk membuat vektor berisi data non-outlier untuk training model
-    x_bersih <- x[-indeks_outlier]
-    y_bersih <- y[-indeks_outlier]
-
     if (metode_imputasi == "winsorisasi") {
-      if (metode == "percentile") {
-        batas_bawah <- stats::quantile(y_bersih, persentil_bawah)
-        batas_atas <- stats::quantile(y_bersih, persentil_atas)
-      } else {
-        batas_bawah <- min(y_bersih)
-        batas_atas <- max(y_bersih)
-      }
+      # Menentukan batas atas dan batas bawah berdasarkan percentile
+      batas_bawah <- stats::quantile(y, persentil_bawah, na.rm = TRUE)
+      batas_atas <- stats::quantile(y, persentil_atas, na.rm = TRUE)
 
       # Untuk mengganti nilai outlier sesuai dengan batas yang telah ditentukan
       nilai_terimputasi <- y
@@ -163,43 +152,20 @@ imputasi_nilai_outlier_lanjutan <- function(data, kolom = NULL,
         }
       }
     } else if (metode_imputasi == "knn") {
-      if (requireNamespace("FNN", quietly = TRUE)) {
-        # Untuk menentukan prediktor numerik
-        prediktor <- setdiff(names(data), kolom)
-        prediktor_numerik <- names(data)[sapply(data, is.numeric)]
-        prediktor_numerik <- setdiff(prediktor_numerik, kolom)
-
-        if (length(prediktor_numerik) == 0) {
-          # Apabila tidak ada prediktor numerik
-          cat("Tidak ada prediktor numerik yang tersedia untuk KNN. Akan membuat prediktor indeks.")
-          data$indeks_temp <- seq_len(nrow(data))
-          prediktor_numerik <- "indeks_temp"
-        }
-
+      if (requireNamespace("VIM", quietly = TRUE)) {
         tryCatch({
-          # Split data menjadi training (non-outlier) dan test (outlier)
-          data_train <- data[-indeks_outlier, prediktor_numerik, drop = FALSE]
-          target_train <- data[-indeks_outlier, kolom]
-          data_test <- data[indeks_outlier, prediktor_numerik, drop = FALSE]
+          # Membuat dataset untuk KNN dengan menandai nilai outlier sebagai NA
+          data_knn <- data
+          data_knn[indeks_outlier, kolom] <- NA
 
-          # Untuk melakukan scaling data agar algoritma tidak bias terhadap variabel dengan rentang nilai lebih besar
-          rata_rata <- colMeans(data_train)
-          simpangan_baku <- apply(data_train, 2, stats::sd)
+          hasil_imputasi <- VIM::kNN(data_knn, k = k, trace = FALSE)
 
-          # Untuk menghindari pembagian dengan nol
-          simpangan_baku[simpangan_baku == 0] <- 1
+          # Hapus kolom flag imputasi yang dihasilkan oleh VIM
+          hasil_imputasi <- hasil_imputasi[, !grepl("_imp$", names(hasil_imputasi))]
 
-          data_train_scaled <- scale(data_train, center = rata_rata, scale = simpangan_baku)
-          data_test_scaled <- scale(data_test, center = rata_rata, scale = simpangan_baku)
-
-          hasil_knn <- suppressWarnings(FNN::knn.reg(train = data_train_scaled,
-                                    test = data_test_scaled,
-                                    y = target_train,
-                                    k = min(k, nrow(data_train))))
-
-          # Untuk mengganti nilai outlier sesuai dengan hasil prediksi
+          # Ambil nilai hasil imputasi
           nilai_terimputasi <- y
-          nilai_terimputasi[indeks_outlier] <- hasil_knn$pred
+          nilai_terimputasi[indeks_outlier] <- hasil_imputasi[[kolom]][indeks_outlier]
 
           # Untuk membulatkan angka jika round TRUE
           if (round && !is.na(nilai_terimputasi)) {
@@ -208,22 +174,18 @@ imputasi_nilai_outlier_lanjutan <- function(data, kolom = NULL,
 
           hasil[[kolom]] <- nilai_terimputasi
 
-          # Untuk menghapus kolom temp jika ada
-          if ("indeks_temp" %in% names(hasil)) {
-            hasil$indeks_temp <- NULL
-          }
-
           if (verbose) {
 
             cat(sprintf("\nKolom '%s': Melakukan imputasi %d nilai outlier menggunakan metode KNN (k=%d)\n",
-                        kolom, info_outlier$jumlah_nilai_outlier, min(k, nrow(data_train))))
+                        kolom, info_outlier$jumlah_nilai_outlier, k))
           }
         }, error = function(e) {
           warning("Imputasi KNN gagal: ", e$message, ". Menggunakan Winsorisasi sebagai metode cadangan.")
 
           # Apabila KNN gagal imputasi
-          batas_bawah <- min(y_bersih)
-          batas_atas <- max(y_bersih)
+          # Menentukan batas atas dan batas bawah berdasarkan percentile
+          batas_bawah <- stats::quantile(y, persentil_bawah, na.rm = TRUE)
+          batas_atas <- stats::quantile(y, persentil_atas, na.rm = TRUE)
 
           nilai_terimputasi <- y
           outlier_bawah <- indeks_outlier[y[indeks_outlier] < batas_bawah]
@@ -248,40 +210,22 @@ imputasi_nilai_outlier_lanjutan <- function(data, kolom = NULL,
           }
         })
       } else {
-        stop("Paket 'FNN' diperlukan untuk imputasi KNN. Silakan install dengan: install.packages('FNN')")
+        stop("Paket 'VIM' diperlukan untuk imputasi KNN. Silakan install dengan: install.packages('FNN')")
       }
     } else if (metode_imputasi == "rf") {
-      if (requireNamespace("randomForest", quietly = TRUE)) {
-        # Untuk menentukan prediktor numerik
-        prediktor <- setdiff(names(data), kolom)
-        prediktor_numerik <- names(data)[sapply(data, is.numeric)]
-        prediktor_numerik <- setdiff(prediktor_numerik, kolom)
-
-        if (length(prediktor_numerik) == 0) {
-          # Apabila tidak ada prediktor numerik
-          warning("Tidak ada prediktor numerik yang tersedia untuk Random Forest. Membuat prediktor indeks.\n")
-          data$indeks_temp <- seq_len(nrow(data))
-          prediktor_numerik <- "indeks_temp"
-        }
-
+      if (requireNamespace("missForest", quietly = TRUE)) {
         tryCatch({
-          # Split data menjadi training (non-outlier) dan test (outlier)
-          data_train <- data[-indeks_outlier, prediktor_numerik, drop = FALSE]
-          target_train <- data[-indeks_outlier, kolom]
-          data_test <- data[indeks_outlier, prediktor_numerik, drop = FALSE]
+          # Membuat dataset untuk RF dengan menandai nilai outlier sebagai NA
+          data_rf <- data
+          data_rf[indeks_outlier, kolom] <- NA
 
-          model_rf <- suppressWarnings(
-            randomForest::randomForest(
-              x = data_train,
-              y = target_train,
-              ntree = ntree
-            )
-          )
+          rf_result <- missForest::missForest(data_rf, ntree = ntree,
+                                              verbose = verbose, parallelize = "no")
+          hasil_imputasi <- rf_result$ximp
 
-          # Untuk mengganti nilai outlier sesuai dengan hasil prediksi
-          nilai_prediksi <- stats::predict(model_rf, newdata = data_test)
+          # Ambil nilai hasil imputasi
           nilai_terimputasi <- y
-          nilai_terimputasi[indeks_outlier] <- nilai_prediksi
+          nilai_terimputasi[indeks_outlier] <- hasil_imputasi
 
           # Untuk membulatkan angka jika round TRUE
           if (round && !is.na(nilai_terimputasi)) {
@@ -303,8 +247,9 @@ imputasi_nilai_outlier_lanjutan <- function(data, kolom = NULL,
           warning("Imputasi Random Forest gagal: ", e$message, ". Menggunakan Winsorisasi sebagai metode cadangan")
 
           # Apabila RF gagal imputasi
-          batas_bawah <- min(y_bersih)
-          batas_atas <- max(y_bersih)
+          # Menentukan batas atas dan batas bawah berdasarkan percentile
+          batas_bawah <- stats::quantile(y, persentil_bawah, na.rm = TRUE)
+          batas_atas <- stats::quantile(y, persentil_atas, na.rm = TRUE)
 
           nilai_terimputasi <- y
           outlier_bawah <- indeks_outlier[y[indeks_outlier] < batas_bawah]
@@ -329,7 +274,7 @@ imputasi_nilai_outlier_lanjutan <- function(data, kolom = NULL,
           }
         })
       } else {
-        stop("Paket 'randomForest' diperlukan untuk imputasi Random Forest. Silakan install dengan: install.packages('randomForest')")
+        stop("Paket 'missForest' diperlukan untuk imputasi Random Forest. Silakan install dengan: install.packages('randomForest')")
       }
     } else if (metode_imputasi == "irmi") {
       if (requireNamespace("VIM", quietly = TRUE)) {
@@ -360,8 +305,9 @@ imputasi_nilai_outlier_lanjutan <- function(data, kolom = NULL,
           warning("Imputasi IRMI gagal: ", e$message, ". Menggunakan Winsorisasi sebagai metode cadangan")
 
           # Apabila IRMI gagal imputasi
-          batas_bawah <- min(y_bersih)
-          batas_atas <- max(y_bersih)
+          # Menentukan batas atas dan batas bawah berdasarkan percentile
+          batas_bawah <- stats::quantile(y, persentil_bawah, na.rm = TRUE)
+          batas_atas <- stats::quantile(y, persentil_atas, na.rm = TRUE)
 
           nilai_terimputasi <- y
           outlier_bawah <- indeks_outlier[y[indeks_outlier] < batas_bawah]
@@ -385,172 +331,36 @@ imputasi_nilai_outlier_lanjutan <- function(data, kolom = NULL,
         stop("Paket 'VIM' diperlukan untuk imputasi IRMI. Silakan install dengan: install.packages('VIM')")
       }
     }
-
-    # Print hasil
-    if (verbose) {
-      cat(sprintf("\nKolom: %s\n", kolom))
-      orig_stats <- data.frame(
-        "Statistik" = c("Count", "Mean", "SD", "Min", "Max", "Median", "Skewness"),
-        `Sebelum Penanganan` = c(
-          length(data[[kolom]]),
-          round(mean(data[[kolom]], na.rm = TRUE), 4),
-          round(sd(data[[kolom]], na.rm = TRUE), 4),
-          round(min(data[[kolom]], na.rm = TRUE), 4),
-          round(max(data[[kolom]], na.rm = TRUE), 4),
-          round(median(data[[kolom]], na.rm = TRUE), 4),
-          round(skewness(data[[kolom]], na.rm = TRUE), 4)
-        ),
-        `Setelah Penanganan` = c(
-          length(hasil[[kolom]]),
-          round(mean(hasil[[kolom]], na.rm = TRUE), 4),
-          round(sd(hasil[[kolom]], na.rm = TRUE), 4),
-          round(min(hasil[[kolom]], na.rm = TRUE), 4),
-          round(max(hasil[[kolom]], na.rm = TRUE), 4),
-          round(median(hasil[[kolom]], na.rm = TRUE), 4),
-          round(skewness(hasil[[kolom]], na.rm = TRUE), 4)
-        )
-      )
-
-      print(orig_stats)
-
-    }
-
-    return(invisible(hasil))
-
-  } else {
-    # Apabila input berupa vector
-    if (!is.numeric(data)) {
-      stop("Vektor input harus numerik.")
-    }
-
-    if (any(is.na(data))) {
-      stop("Terdapat nilai yang hilang dalam data. Imputasi tidak bisa dilakukan.")
-    }
-
-    # Untuk mengecek nilai outlier dengan fungsi deteksi_nilai_outlier
-    info_outlier <- deteksi_nilai_outlier(data,
-                                      metode = metode,
-                                      ambang_batas = ambang_batas,
-                                      persentil_bawah = persentil_bawah,
-                                      persentil_atas = persentil_atas)
-
-    # Apabila tidak ditemukan nilai outlier
-    if (info_outlier$jumlah_nilai_outlier == 0) {
-      if (verbose) {
-        cat("Tidak ditemukan nilai outlier yang terdeteksi dalam kolom yang ditentukan. Tidak ada imputasi yang dilakukan.\n")
-      }
-      return(data)
-    }
-
-    # Untuk mengambil indeks data yang merupakan nilai outlier
-    # Menggunakan kolom status outlier dari hasil deteksi
-    status_outlier <- info_outlier$data$adalah_nilai_outlier
-    indeks_outlier <- which(status_outlier)
-
-    # Untuk menyimpan data asli sebelum dilakukan imputasi
-    hasil <- data
-    x <- seq_along(data)
-    y <- data
-
-    # Untuk menyimpan nilai outlier
-    nilai_outlier <- y[indeks_outlier]
-
-    # Untuk membuat vektor berisi data non-outlier untuk training model
-    x_bersih <- x[-indeks_outlier]
-    y_bersih <- y[-indeks_outlier]
-
-    if (metode_imputasi == "winsorisasi") {
-      if (metode == "percentile") {
-        batas_bawah <- stats::quantile(y_bersih, persentil_bawah)
-        batas_atas <- stats::quantile(y_bersih, persentil_atas)
-      } else {
-        batas_bawah <- min(y_bersih)
-        batas_atas <- max(y_bersih)
-      }
-
-      # Untuk mengganti nilai outlier sesuai dengan batas yang telah ditentukan
-      nilai_terimputasi <- y
-      outlier_bawah <- indeks_outlier[y[indeks_outlier] < batas_bawah]
-      outlier_atas <- indeks_outlier[y[indeks_outlier] > batas_atas]
-
-      if (length(outlier_bawah) > 0) {
-        nilai_terimputasi[outlier_bawah] <- batas_bawah
-      }
-      if (length(outlier_atas) > 0) {
-        nilai_terimputasi[outlier_atas] <- batas_atas
-      }
-
-      hasil <- nilai_terimputasi
-
-      if (verbose) {
-        cat(sprintf("\nMelakukan imputasi %d nilai outlier menggunakan metode Winsorisasi\n",
-                    info_outlier$jumlah_nilai_outlier))
-        if (length(outlier_bawah) > 0) {
-          cat(sprintf("  - %d nilai outlier bawah diganti dengan %.4g\n",
-                      length(outlier_bawah), batas_bawah))
-        }
-        if (length(outlier_atas) > 0) {
-          cat(sprintf("  - %d nilai outlier atas diganti dengan %.4g\n",
-                      length(outlier_atas), batas_atas))
-        }
-      }
-
-    } else if (metode_imputasi %in% c("knn", "rf", "irmi")) {
-      # Apabila input vector maka KNN, RF, dan IRMI tidak bisa dilakukan karena membutuhkan prediktor
-      warning(paste(metode_imputasi, "membutuhkan beberapa prediktor tetapi input adalah vektor.",
-                    "Menggunakan Winsorisasi sebagai metode cadangan."))
-
-      batas_bawah <- min(y_bersih)
-      batas_atas <- max(y_bersih)
-
-      nilai_terimputasi <- y
-      outlier_bawah <- indeks_outlier[y[indeks_outlier] < batas_bawah]
-      outlier_atas <- indeks_outlier[y[indeks_outlier] > batas_atas]
-
-      if (length(outlier_bawah) > 0) {
-        nilai_terimputasi[outlier_bawah] <- batas_bawah
-      }
-      if (length(outlier_atas) > 0) {
-        nilai_terimputasi[outlier_atas] <- batas_atas
-      }
-
-      hasil <- nilai_terimputasi
-
-      if (verbose) {
-        cat(sprintf("\nMelakukan imputasi %d nilai outlier menggunakan metode Winsorisasi (metode cadangan)\n",
-                    info_outlier$jumlah_nilai_outlier))
-      }
-    }
-
-    # Print hasil
-    if (verbose) {
-      cat(sprintf("\nKolom: %s\n", deparse(substitute(data))))
-      orig_stats <- data.frame(
-        "Statistik" = c("Count", "Mean", "SD", "Min", "Max", "Median", "Skewness"),
-        `Sebelum Penanganan` = c(
-          length(data),
-          round(mean(data, na.rm = TRUE), 4),
-          round(sd(data, na.rm = TRUE), 4),
-          round(min(data, na.rm = TRUE), 4),
-          round(max(data, na.rm = TRUE), 4),
-          round(median(data, na.rm = TRUE), 4),
-          round(skewness(data, na.rm = TRUE), 4)
-        ),
-        `Setelah Penanganan` = c(
-          length(hasil),
-          round(mean(hasil, na.rm = TRUE), 4),
-          round(sd(hasil, na.rm = TRUE), 4),
-          round(min(hasil, na.rm = TRUE), 4),
-          round(max(hasil, na.rm = TRUE), 4),
-          round(median(hasil, na.rm = TRUE), 4),
-          round(skewness(hasil), 4)
-        )
-      )
-
-      print(orig_stats)
-
-    }
-
-    return(invisible(hasil))
   }
+  # Print hasil
+  if (verbose) {
+    cat(sprintf("\nKolom: %s\n", kolom))
+    orig_stats <- data.frame(
+      "Statistik" = c("Count", "Mean", "SD", "Min", "Max", "Median", "Skewness"),
+      `Sebelum Penanganan` = c(
+        length(data[[kolom]]),
+        round(mean(data[[kolom]], na.rm = TRUE), 4),
+        round(sd(data[[kolom]], na.rm = TRUE), 4),
+        round(min(data[[kolom]], na.rm = TRUE), 4),
+        round(max(data[[kolom]], na.rm = TRUE), 4),
+        round(median(data[[kolom]], na.rm = TRUE), 4),
+        round(moments::skewness(data[[kolom]], na.rm = TRUE), 4)
+      ),
+      `Setelah Penanganan` = c(
+        length(hasil[[kolom]]),
+        round(mean(hasil[[kolom]], na.rm = TRUE), 4),
+        round(sd(hasil[[kolom]], na.rm = TRUE), 4),
+        round(min(hasil[[kolom]], na.rm = TRUE), 4),
+        round(max(hasil[[kolom]], na.rm = TRUE), 4),
+        round(median(hasil[[kolom]], na.rm = TRUE), 4),
+        round(moments::skewness(hasil[[kolom]], na.rm = TRUE), 4)
+      )
+    )
+
+    print(orig_stats)
+
+  }
+
+  return(invisible(hasil))
+
 }

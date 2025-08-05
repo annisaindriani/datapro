@@ -77,7 +77,7 @@ cek_frekuensi_kategori <- function(data,
 
   # Apabila tidak ada data
   if (nrow(data) == 0) {
-    cat("Dataset kosong. Tidak ada konversi yang dilakukan.\n")
+    cat("Dataset kosong. Tidak ada proses yang dilakukan.\n")
     return(invisible(NULL))
   }
 
@@ -88,7 +88,7 @@ cek_frekuensi_kategori <- function(data,
 
   # Untuk mengidentifikasi kolom kategorikal
   if (is.null(kolom)) {
-    kolom_kategorikal <- sapply(data, function(x) is.character(x) || is.factor(x))
+    kolom_kategorikal <- sapply(data, function(x) is.character(x) || is.factor(x) || is.logical(x))
 
     if (!any(kolom_kategorikal)) {
       cat("Tidak ada kolom kategorikal yang ditemukan dalam dataset.\n")

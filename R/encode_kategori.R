@@ -110,7 +110,7 @@ encode_kategori <- function(data,
   # Untuk proses encoding berdasarkan metode
   if (metode == "label") {
     sorted_values <- sort(unique_values)
-    encoded_values <- match(col_data, sorted_values)
+    encoded_values <- match(col_data, sorted_values) - 1
 
     # Untuk membuat kolom baru
     new_col_name <- paste0(kolom, "_label")
@@ -120,7 +120,7 @@ encode_kategori <- function(data,
       cat("Melakukan label encoding pada kolom '", kolom, "'.\n", sep = "")
       cat("Kriteria mapping kategori: ")
       for (i in 1:length(sorted_values)) {
-        cat("'", sorted_values[i], "' = ", i, sep = "")
+        cat("'", sorted_values[i], "' = ", i-1, sep = "")
         if (i < length(sorted_values)) cat(", ")
       }
       cat("\n")
@@ -146,7 +146,7 @@ encode_kategori <- function(data,
       }
     }
 
-    encoded_values <- match(col_data, level_ordinal)
+    encoded_values <- match(col_data, level_ordinal) - 1
 
     # Untuk membuat kolom baru
     new_col_name <- paste0(kolom, "_ordinal")
@@ -157,7 +157,7 @@ encode_kategori <- function(data,
       cat("Kriteria urutan kategori: ")
       for (i in 1:length(level_ordinal)) {
         if (level_ordinal[i] %in% unique_values) {
-          cat("'", level_ordinal[i], "' = ", i, sep = "")
+          cat("'", level_ordinal[i], "' = ", i-1, sep = "")
           if (i < length(level_ordinal)) cat(", ")
         }
       }

@@ -41,7 +41,7 @@ deteksi_duplikat <- function(data) {
     return(invisible(NULL))
   }
 
-  # Untuk mengidentifikasi baris yang merupakan duplikat
+  # Untuk mengidentifikasi baris yang merupakan duplikat (output akan berupa TRUE atau FALSE)
   baris_duplikat <- duplicated(data) | duplicated(data, fromLast = TRUE)
 
   # Apabila tidak ada baris duplikat

@@ -11,8 +11,6 @@
 #'     \item "robust": Penskalaan robust menggunakan median dan iqr.
 #'   }
 #' @param hapus_na Logis, apakah akan menghapus nilai yang hilang sebelum perhitungan (default TRUE).
-#' @param center Untuk penskalaan robust, nilai center yang tersedia adalah "median" dan "mean" (default "median").
-#' @param scale Untuk penskalaan robust, nilai scale yang tersedia adalah "iqr", "mad", dan "sd" (default "iqr").
 #' @param kolom Vektor karakter dari nama kolom yang akan dinormalisasi. Jika NULL (default), normalisasi semua kolom numerik.
 #' @param invers_params Logis, apakah akan mengembalikan parameter transformasi untuk kemungkinan mengembalikan nilai atau invers (default FALSE).
 #'
@@ -35,9 +33,6 @@
 #' # Normalisasi metode Z-score hanya ke kolom 'x'
 #' normalisasi_data(data, metode = "z-score", kolom = "x")
 #'
-#' # Normalisasi Robust dengan opsi center dan scale yang berbeda
-#' normalisasi_data(data, metode = "robust", center = "mean", scale = "sd")
-#'
 #' # Normalisasi Robust dengan mengembalikan parameter
 #' hasil <- normalisasi_data(data, metode = "robust", invers_params = TRUE)
 #' hasil$data
@@ -59,15 +54,11 @@
 normalisasi_data <- function(data,
                              metode = c("minmax", "z-score", "robust"),
                              hapus_na = TRUE,
-                             center = c("median", "mean"),
-                             scale = c("iqr", "sd", "mad"),
                              kolom = NULL,
                              invers_params = FALSE) {
 
   # Untuk validasi argumen yang diberikan pengguna sesuai dengan pilihan yang tersedia
   metode <- match.arg(metode)
-  center <- match.arg(center)
-  scale <- match.arg(scale)
 
   # Untuk menyimpan parameter untuk invers
   params_invers <- list(metode = metode)
@@ -151,21 +142,13 @@ normalisasi_data <- function(data,
       }
 
     } else if (metode == "robust") {
-      # Memilih metode centering
-      if (center == "median") {
-        nilai_center <- stats::median(data_input, na.rm = hapus_na)
-      } else {
-        nilai_center <- mean(data_input, na.rm = hapus_na)
-      }
+      # Menghitung median
+      center = "median"
+      nilai_center <- stats::median(data_input, na.rm = hapus_na)
 
-      # Memilih metode scaling
-      if (scale == "iqr") {
-        nilai_scale <- stats::IQR(data_input, na.rm = hapus_na)
-      } else if (scale == "sd") {
-        nilai_scale <- stats::sd(data_input, na.rm = hapus_na)
-      } else {
-        nilai_scale <- stats::mad(data_input, na.rm = hapus_na)
-      }
+      # Memilih IQR
+      scale = "IQR"
+      nilai_scale <- stats::IQR(data_input, na.rm = hapus_na)
 
       # Jika nilai scale 0 maka semua nilai menjadi 0 (karena pembagi menjadi 0)
       if (nilai_scale == 0) {
@@ -344,21 +327,13 @@ normalisasi_data <- function(data,
         params_list[[kol]] <- list(metode = metode, mean = nilai_mean, sd = nilai_sd)
 
       } else if (metode == "robust") {
-        # Memilih metode centering
-        if (center == "median") {
-          nilai_center <- stats::median(x, na.rm = hapus_na)
-        } else {
-          nilai_center <- mean(x, na.rm = hapus_na)
-        }
+        # Menghitung median
+        center = "median"
+        nilai_center <- stats::median(x, na.rm = hapus_na)
 
-        # Memilih metode scaling
-        if (scale == "iqr") {
-          nilai_scale <- stats::IQR(x, na.rm = hapus_na)
-        } else if (scale == "sd") {
-          nilai_scale <- stats::sd(x, na.rm = hapus_na)
-        } else {
-          nilai_scale <- stats::mad(x, na.rm = hapus_na)
-        }
+        # Menhitung iqr
+        scale = "IQR"
+        nilai_scale <- stats::IQR(x, na.rm = hapus_na)
 
         # Jika nilai scale 0 maka semua nilai menjadi 0 (karena pembagi menjadi 0)
         if (nilai_scale == 0) {
@@ -439,3 +414,6 @@ normalisasi_data <- function(data,
 
   }
 }
+
+#' # Normalisasi Robust dengan mengembalikan parameter
+hasil <- normalisasi_data(data, metode = "robust", invers_params = TRUE)
